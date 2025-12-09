@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, Youtube, Loader2, AlertCircle } from 'lucide-react';
 import { generateYouTubeContent, parseGeneratedContent } from './services/geminiService';
 import { ResultSection } from './components/ResultSection';
@@ -6,16 +6,41 @@ import { EMOTIONS } from './constants';
 import { OptimizationResult } from './types';
 
 function App() {
-  // 2. State Tanımlamaları
+  // State Tanımlamaları
   const [topic, setTopic] = useState('');
   const [emotion, setEmotion] = useState(EMOTIONS[0].id);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 3. handleGenerate Fonksiyonu
+  // Günlük Kullanım Sayacı
+  const [dailyUsageCount, setDailyUsageCount] = useState(() => {
+    // Başlangıçta localStorage'dan değeri oku
+    const savedCount = localStorage.getItem('tubehype_daily_count');
+    return savedCount ? parseInt(savedCount, 10) : 0;
+  });
+
+  // Tarih kontrolü ve sayacı sıfırlama
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const lastDate = localStorage.getItem('tubehype_last_date');
+
+    // Eğer tarih değişmişse veya ilk kez giriliyorsa
+    if (lastDate !== today) {
+      setDailyUsageCount(0);
+      localStorage.setItem('tubehype_daily_count', '0');
+      localStorage.setItem('tubehype_last_date', today);
+    }
+  }, []);
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 1. Limit Kontrolü: Günlük 5 hak
+    if (dailyUsageCount >= 5) {
+      alert("Ücretsiz günlük içerik üretim limitiniz (5/5) doldu. Lütfen yarın tekrar deneyiniz veya abonelik alınız!");
+      return;
+    }
 
     // Validasyon: Konu veya duygu boşsa uyarı ver
     if (!topic.trim()) {
@@ -31,6 +56,12 @@ function App() {
     setIsLoading(true);
     setError(null);
     setResult(null);
+
+    // Sayaç Artırma (API çağrısından önce)
+    const newCount = dailyUsageCount + 1;
+    setDailyUsageCount(newCount);
+    localStorage.setItem('tubehype_daily_count', newCount.toString());
+    localStorage.setItem('tubehype_last_date', new Date().toDateString());
 
     try {
       // API Çağrısı - Ham metni al
@@ -66,9 +97,16 @@ function App() {
               <p className="text-xs text-gray-500 tracking-wider">İÇERİK OPTİMİZASYON UZMANI</p>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-2 text-sm text-gray-400 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
-             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-             Gemini 2.5 Flash Aktif
+          <div className="flex items-center gap-4">
+             <div className={`hidden md:flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg border border-gray-700/50 ${dailyUsageCount >= 5 ? 'text-red-400 bg-red-900/20' : 'text-gray-400 bg-gray-800/50'}`}>
+               <span>Bugün:</span>
+               <span className={`font-bold ${dailyUsageCount >= 5 ? 'text-red-500' : 'text-red-400'}`}>{dailyUsageCount}/5</span>
+               <span>Üretim</span>
+             </div>
+             <div className="hidden md:flex items-center gap-2 text-sm text-gray-400 bg-gray-800 px-3 py-1 rounded-full border border-gray-700">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Gemini 2.5 Flash Aktif
+             </div>
           </div>
         </div>
       </header>
@@ -98,7 +136,7 @@ function App() {
                   onChange={(e) => setTopic(e.target.value)}
                   placeholder="Örn: Evde yapılabilecek 5 dakikalık egzersizler..."
                   className="w-full bg-gray-900/80 border border-gray-600 text-white rounded-xl px-5 py-4 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder-gray-600 text-lg"
-                  disabled={isLoading}
+                  disabled={isLoading || dailyUsageCount >= 5}
                 />
               </div>
 
@@ -113,14 +151,14 @@ function App() {
                       key={opt.id}
                       type="button"
                       onClick={() => setEmotion(opt.id)}
-                      disabled={isLoading}
+                      disabled={isLoading || dailyUsageCount >= 5}
                       className={`
                         flex flex-col items-center justify-center p-3 rounded-xl border transition-all duration-200
                         ${emotion === opt.id 
                           ? 'bg-red-500/20 border-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.3)] transform scale-105' 
                           : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-500 hover:bg-gray-800'
                         }
-                        ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}
+                        ${(isLoading || dailyUsageCount >= 5) ? 'opacity-50 cursor-not-allowed' : ''}
                       `}
                     >
                       <span className="text-2xl mb-1">{opt.emoji}</span>
@@ -133,13 +171,22 @@ function App() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold py-4 rounded-xl shadow-lg transform transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg"
+                disabled={isLoading || dailyUsageCount >= 5}
+                className={`w-full font-bold py-4 rounded-xl shadow-lg transform transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-lg ${
+                  dailyUsageCount >= 5 
+                    ? 'bg-gray-700 text-gray-400 hover:bg-gray-700 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white'
+                }`}
               >
                 {isLoading ? (
                   <>
                     <Loader2 className="animate-spin" />
                     İçerik Üretiliyor...
+                  </>
+                ) : dailyUsageCount >= 5 ? (
+                  <>
+                    <AlertCircle />
+                    Limit Doldu. Abonelik Al
                   </>
                 ) : (
                   <>
